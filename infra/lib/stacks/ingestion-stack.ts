@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { StorageStack } from './storage-stack';
 import { SecretsStack } from './secrets-stack';
@@ -54,6 +55,19 @@ export class IngestionStack extends cdk.Stack {
       retentionPeriod: cdk.Duration.days(7),
       encryption: sqs.QueueEncryption.SQS_MANAGED,
       deadLetterQueue: { queue: toScoreDlq, maxReceiveCount: 3 },
+    });
+
+    // SSM — queue URLs consumed by workers and Lambdas at runtime
+    new ssm.StringParameter(this, 'ToProcessQueueUrlParam', {
+      parameterName: '/intel-ingester/prod/config/to-process-queue-url',
+      stringValue: this.toProcessQueue.queueUrl,
+      description: 'SQS to-process queue URL',
+    });
+
+    new ssm.StringParameter(this, 'ToScoreQueueUrlParam', {
+      parameterName: '/intel-ingester/prod/config/to-score-queue-url',
+      stringValue: this.toScoreQueue.queueUrl,
+      description: 'SQS to-score queue URL',
     });
 
     // ECS Cluster — Fargate-only, no VPC required at cluster level.

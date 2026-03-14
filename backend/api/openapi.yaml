@@ -1,0 +1,1516 @@
+openapi: 3.1.0
+
+info:
+  title: Intel Ingester API
+  description: >
+    Topic-driven intelligence synthesis platform. Ingests content from multiple source
+    types (RSS, Reddit, YouTube, Podcast, PDF, Manual), synthesises with AWS Bedrock Claude,
+    and delivers intelligence briefings.
+  version: 0.1.0
+  contact:
+    name: Intel Ingester
+
+servers:
+  - url: https://api.intelingester.internal
+    description: Production (Lambda via Mangum)
+  - url: http://localhost:8000
+    description: Local development
+
+security: []
+
+tags:
+  - name: auth
+    description: Authentication — no API key required
+  - name: health
+    description: Health check
+  - name: topics
+    description: Topic management
+  - name: sources
+    description: Source management per topic
+  - name: items
+    description: Ingested items per topic
+  - name: digests
+    description: Synthesised digests per topic
+  - name: ingest
+    description: Manual content ingestion
+  - name: settings
+    description: Application settings
+
+# ---------------------------------------------------------------------------
+# Security Schemes
+# ---------------------------------------------------------------------------
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Static API key for programmatic access.
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: sessionToken
+      description: iron-session cookie set after successful login.
+
+  # -------------------------------------------------------------------------
+  # Schemas
+  # -------------------------------------------------------------------------
+  schemas:
+
+    # --- Core domain objects -----------------------------------------------
+
+    Topic:
+      type: object
+      required:
+        - topic_id
+        - name
+        - description
+        - window_days
+        - enabled
+        - created_at
+        - updated_at
+      properties:
+        topic_id:
+          type: string
+          description: ULID primary key.
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCD
+        name:
+          type: string
+          example: AI Research
+        description:
+          type: string
+          example: Tracks developments in applied AI research and tooling.
+        window_days:
+          type: integer
+          minimum: 1
+          default: 7
+          example: 7
+        enabled:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-03-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-03-14T08:30:00Z"
+
+    TopicCreate:
+      type: object
+      required:
+        - name
+        - description
+      properties:
+        name:
+          type: string
+          example: AI Research
+        description:
+          type: string
+          example: Tracks developments in applied AI research and tooling.
+        window_days:
+          type: integer
+          minimum: 1
+          default: 7
+          example: 7
+
+    TopicUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          example: AI Research
+        description:
+          type: string
+          example: Updated description.
+        window_days:
+          type: integer
+          minimum: 1
+          example: 14
+        enabled:
+          type: boolean
+          example: false
+
+    # --- Source config shapes -----------------------------------------------
+
+    RssConfig:
+      type: object
+      required:
+        - feed_url
+      properties:
+        feed_url:
+          type: string
+          format: uri
+          example: https://feeds.feedburner.com/oreilly/radar
+        lookback_days:
+          type: integer
+          minimum: 1
+          default: 7
+          example: 7
+        max_items:
+          type: integer
+          minimum: 1
+          default: 50
+          example: 50
+
+    RedditConfig:
+      type: object
+      required:
+        - subreddits
+      properties:
+        subreddits:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          example:
+            - MachineLearning
+            - LocalLLaMA
+        post_limit:
+          type: integer
+          minimum: 1
+          default: 25
+          example: 25
+        min_score:
+          type: integer
+          minimum: 0
+          default: 10
+          example: 10
+        lookback_days:
+          type: integer
+          minimum: 1
+          default: 7
+          example: 7
+
+    YouTubeConfig:
+      type: object
+      properties:
+        channel_ids:
+          type: array
+          items:
+            type: string
+          example:
+            - UCbmNph6atAoGfqLoCL_duAg
+        playlist_ids:
+          type: array
+          items:
+            type: string
+          example:
+            - PLrAXtmErZgOeiKm4sgNOknc9TTnV3jqV9
+        search_query:
+          type: string
+          example: "large language models 2026"
+        max_results:
+          type: integer
+          minimum: 1
+          default: 20
+          example: 20
+        lookback_days:
+          type: integer
+          minimum: 1
+          default: 7
+          example: 7
+
+    PodcastConfig:
+      type: object
+      required:
+        - feed_url
+      properties:
+        feed_url:
+          type: string
+          format: uri
+          example: https://feeds.simplecast.com/54nAGcIl
+        lookback_days:
+          type: integer
+          minimum: 1
+          default: 14
+          example: 14
+        max_episodes:
+          type: integer
+          minimum: 1
+          default: 5
+          example: 5
+
+    PdfConfig:
+      type: object
+      required:
+        - urls
+      properties:
+        urls:
+          type: array
+          items:
+            type: string
+            format: uri
+          minItems: 1
+          example:
+            - https://arxiv.org/pdf/2303.08774.pdf
+
+    ManualPendingItem:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          example: Interesting article on transformers
+        url:
+          type: string
+          format: uri
+          example: https://example.com/article
+        text:
+          type: string
+          example: Full article text pasted here.
+
+    ManualConfig:
+      type: object
+      properties:
+        pending_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ManualPendingItem'
+          default: []
+
+    SourceConfig:
+      description: >
+        Source-type-specific configuration object. The shape depends on the
+        source_type field of the parent Source:
+        - rss → RssConfig
+        - reddit → RedditConfig
+        - youtube → YouTubeConfig
+        - podcast → PodcastConfig
+        - pdf → PdfConfig
+        - manual → ManualConfig
+      oneOf:
+        - $ref: '#/components/schemas/RssConfig'
+        - $ref: '#/components/schemas/RedditConfig'
+        - $ref: '#/components/schemas/YouTubeConfig'
+        - $ref: '#/components/schemas/PodcastConfig'
+        - $ref: '#/components/schemas/PdfConfig'
+        - $ref: '#/components/schemas/ManualConfig'
+
+    SourceType:
+      type: string
+      enum:
+        - rss
+        - reddit
+        - youtube
+        - podcast
+        - pdf
+        - manual
+
+    Source:
+      type: object
+      required:
+        - source_id
+        - topic_id
+        - name
+        - source_type
+        - config
+        - enabled
+        - created_at
+        - updated_at
+      properties:
+        source_id:
+          type: string
+          description: ULID primary key.
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCE
+        topic_id:
+          type: string
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCD
+        name:
+          type: string
+          example: HN ML Feed
+        source_type:
+          $ref: '#/components/schemas/SourceType'
+        config:
+          $ref: '#/components/schemas/SourceConfig'
+        enabled:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-03-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-03-14T08:30:00Z"
+        last_run_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          example: "2026-03-13T12:00:00Z"
+
+    SourceCreate:
+      type: object
+      required:
+        - name
+        - source_type
+        - config
+      properties:
+        name:
+          type: string
+          example: HN ML Feed
+        source_type:
+          $ref: '#/components/schemas/SourceType'
+        config:
+          $ref: '#/components/schemas/SourceConfig'
+
+    SourceUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          example: HN ML Feed (updated)
+        config:
+          $ref: '#/components/schemas/SourceConfig'
+        enabled:
+          type: boolean
+          example: false
+
+    ItemStatus:
+      type: string
+      enum:
+        - RAW
+        - EMBEDDED
+        - SCORED
+
+    Item:
+      type: object
+      required:
+        - item_id
+        - topic_id
+        - source_id
+        - source_type
+        - title
+        - url
+        - status
+        - created_at
+      properties:
+        item_id:
+          type: string
+          description: ULID primary key.
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCF
+        topic_id:
+          type: string
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCD
+        source_id:
+          type: string
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCE
+        source_type:
+          $ref: '#/components/schemas/SourceType'
+        title:
+          type: string
+          example: "Attention Is All You Need — Revisited"
+        url:
+          type: string
+          format: uri
+          example: https://example.com/attention-revisited
+        status:
+          $ref: '#/components/schemas/ItemStatus'
+        score:
+          type:
+            - number
+            - "null"
+          minimum: 0
+          maximum: 10
+          example: 8.5
+        score_reason:
+          type:
+            - string
+            - "null"
+          example: "Highly relevant to topic; covers novel architecture improvements."
+        published_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          example: "2026-03-12T10:00:00Z"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-03-14T07:00:00Z"
+
+    PaginatedItems:
+      type: object
+      required:
+        - items
+        - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Item'
+        cursor:
+          type:
+            - string
+            - "null"
+          description: Opaque cursor for the next page. Null when no further pages exist.
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCG
+        total:
+          type: integer
+          description: Total number of items matching the query filters (not just this page).
+          example: 142
+
+    # --- Digest ------------------------------------------------------------
+
+    TrendEntry:
+      type: object
+      required:
+        - trend
+        - evidence
+        - source_urls
+      properties:
+        trend:
+          type: string
+          example: "Rapid adoption of mixture-of-experts architectures"
+        evidence:
+          type: string
+          example: "Three independent papers this week report 40% efficiency gains."
+        source_urls:
+          type: array
+          items:
+            type: string
+            format: uri
+          example:
+            - https://example.com/paper1
+            - https://example.com/paper2
+
+    InsightEntry:
+      type: object
+      required:
+        - insight
+        - implication
+      properties:
+        insight:
+          type: string
+          example: "Open-weight models are closing the gap with proprietary frontier models."
+        implication:
+          type: string
+          example: "Enterprise adoption barriers related to data privacy are lowering."
+
+    SignalConfidence:
+      type: string
+      enum:
+        - high
+        - medium
+        - low
+
+    EmergingSignalEntry:
+      type: object
+      required:
+        - signal
+        - confidence
+      properties:
+        signal:
+          type: string
+          example: "Multimodal reasoning becoming table stakes for production deployments."
+        confidence:
+          $ref: '#/components/schemas/SignalConfidence'
+
+    NotableQuoteEntry:
+      type: object
+      required:
+        - quote
+        - source_url
+        - attribution
+      properties:
+        quote:
+          type: string
+          example: "The next breakthrough will be in reasoning, not raw scale."
+        source_url:
+          type: string
+          format: uri
+          example: https://example.com/interview
+        attribution:
+          type: string
+          example: "Dr. Jane Smith, AI Research Lead"
+
+    DigestSourceEntry:
+      type: object
+      required:
+        - title
+        - url
+        - score
+      properties:
+        title:
+          type: string
+          example: "Attention Is All You Need — Revisited"
+        url:
+          type: string
+          format: uri
+          example: https://example.com/attention-revisited
+        score:
+          type: number
+          minimum: 0
+          maximum: 10
+          example: 8.5
+
+    Synthesis:
+      type: object
+      required:
+        - summary
+        - top_trends
+        - key_insights
+        - emerging_signals
+        - notable_quotes
+        - sources
+      properties:
+        summary:
+          type: string
+          description: Narrative overview of the digest period. First line is used as DigestSummary.summary.
+          example: "This week saw significant advances in efficient transformer architectures..."
+        top_trends:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendEntry'
+        key_insights:
+          type: array
+          items:
+            $ref: '#/components/schemas/InsightEntry'
+        emerging_signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmergingSignalEntry'
+        notable_quotes:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotableQuoteEntry'
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/DigestSourceEntry'
+
+    DigestSummary:
+      type: object
+      required:
+        - digest_id
+        - topic_id
+        - created_at
+        - window_days
+        - item_count
+        - summary
+      properties:
+        digest_id:
+          type: string
+          description: ULID primary key.
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCH
+        topic_id:
+          type: string
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCD
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-03-14T09:00:00Z"
+        window_days:
+          type: integer
+          example: 7
+        item_count:
+          type: integer
+          example: 34
+        email_sent_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          example: "2026-03-14T09:05:00Z"
+        summary:
+          type: string
+          description: First line of synthesis.summary.
+          example: "This week saw significant advances in efficient transformer architectures..."
+
+    Digest:
+      allOf:
+        - $ref: '#/components/schemas/DigestSummary'
+        - type: object
+          required:
+            - synthesis
+          properties:
+            synthesis:
+              $ref: '#/components/schemas/Synthesis'
+
+    # --- Async responses ---------------------------------------------------
+
+    ScanResponse:
+      type: object
+      required:
+        - scan_id
+        - topic_id
+        - status
+        - sources_triggered
+        - task_arns
+      properties:
+        scan_id:
+          type: string
+          description: ULID for this scan batch.
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCI
+        topic_id:
+          type: string
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCD
+        status:
+          type: string
+          example: TRIGGERED
+        sources_triggered:
+          type: integer
+          example: 3
+        task_arns:
+          type: array
+          items:
+            type: string
+          example:
+            - "arn:aws:ecs:ap-southeast-2:123456789012:task/cluster/abcdef1234567890"
+
+    SynthesisResponse:
+      type: object
+      required:
+        - execution_arn
+        - topic_id
+        - status
+      properties:
+        execution_arn:
+          type: string
+          description: Step Functions execution ARN.
+          example: "arn:aws:states:ap-southeast-2:123456789012:execution:IntelIngesterSynthesis:01HV3K7Q"
+        topic_id:
+          type: string
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCD
+        status:
+          type: string
+          example: RUNNING
+
+    # --- Ingestion ---------------------------------------------------------
+
+    ManualIngestRequest:
+      type: object
+      required:
+        - title
+      description: At least one of text or url must be provided.
+      properties:
+        title:
+          type: string
+          example: Interesting article on transformers
+        text:
+          type: string
+          example: Full article text pasted here.
+        url:
+          type: string
+          format: uri
+          example: https://example.com/article
+
+    ManualIngestResponse:
+      type: object
+      required:
+        - item_id
+      properties:
+        item_id:
+          type: string
+          description: ULID of the created Item.
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCJ
+
+    # --- Settings ----------------------------------------------------------
+
+    Settings:
+      type: object
+      required:
+        - ses_from_email
+        - ses_to_email
+        - default_window_days
+      properties:
+        ses_from_email:
+          type: string
+          format: email
+          example: intel@example.com
+        ses_to_email:
+          type: string
+          format: email
+          example: user@example.com
+        default_window_days:
+          type: integer
+          minimum: 1
+          default: 7
+          example: 7
+
+    SettingsUpdate:
+      type: object
+      properties:
+        ses_from_email:
+          type: string
+          format: email
+          example: intel@example.com
+        ses_to_email:
+          type: string
+          format: email
+          example: user@example.com
+        default_window_days:
+          type: integer
+          minimum: 1
+          example: 14
+
+    # --- Auth --------------------------------------------------------------
+
+    LoginRequest:
+      type: object
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          format: password
+          example: "supersecret"
+
+    # --- Errors ------------------------------------------------------------
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: "Not found"
+        detail:
+          type: string
+          example: "Topic 01HV3K7QZR4E5J8P6N2X9MWBCD does not exist."
+
+  # -------------------------------------------------------------------------
+  # Reusable responses
+  # -------------------------------------------------------------------------
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Unauthorized
+            detail: Invalid API key or session.
+
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Not found
+            detail: The requested resource does not exist.
+
+    UnprocessableEntity:
+      description: Validation error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Validation error
+            detail: "window_days must be a positive integer."
+
+  # -------------------------------------------------------------------------
+  # Reusable parameters
+  # -------------------------------------------------------------------------
+  parameters:
+    topicId:
+      name: topicId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: ULID of the topic.
+      example: 01HV3K7QZR4E5J8P6N2X9MWBCD
+
+    sourceId:
+      name: sourceId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: ULID of the source.
+      example: 01HV3K7QZR4E5J8P6N2X9MWBCE
+
+    digestId:
+      name: digestId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: ULID of the digest.
+      example: 01HV3K7QZR4E5J8P6N2X9MWBCH
+
+# =============================================================================
+# Paths
+# =============================================================================
+paths:
+
+  # ---------------------------------------------------------------------------
+  # Auth
+  # ---------------------------------------------------------------------------
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Log in with password
+      description: >
+        Authenticates the user with a static password. On success, sets an
+        iron-session cookie (sessionToken) in the response.
+      operationId: authLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              password: supersecret
+      responses:
+        "200":
+          description: Login successful. Session cookie is set.
+          headers:
+            Set-Cookie:
+              description: iron-session cookie.
+              schema:
+                type: string
+                example: sessionToken=<encrypted>; HttpOnly; Secure; SameSite=Strict
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logged in.
+        "401":
+          description: Invalid password.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Unauthorized
+                detail: Incorrect password.
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Log out
+      description: Clears the session cookie.
+      operationId: authLogout
+      security: []
+      responses:
+        "200":
+          description: Logout successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logged out.
+
+  # ---------------------------------------------------------------------------
+  # Health
+  # ---------------------------------------------------------------------------
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      description: Returns service liveness and version.
+      operationId: healthCheck
+      security: []
+      responses:
+        "200":
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - version
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                    example: ok
+                  version:
+                    type: string
+                    example: "0.1.0"
+
+  # ---------------------------------------------------------------------------
+  # Topics
+  # ---------------------------------------------------------------------------
+  /topics:
+    get:
+      tags: [topics]
+      summary: List all topics
+      operationId: listTopics
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Array of topics.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Topic'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [topics]
+      summary: Create a topic
+      operationId: createTopic
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TopicCreate'
+            example:
+              name: AI Research
+              description: Tracks developments in applied AI research and tooling.
+              window_days: 7
+      responses:
+        "201":
+          description: Topic created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Topic'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /topics/{topicId}:
+    parameters:
+      - $ref: '#/components/parameters/topicId'
+
+    get:
+      tags: [topics]
+      summary: Get a topic
+      operationId: getTopic
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Topic object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Topic'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [topics]
+      summary: Update a topic
+      operationId: updateTopic
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TopicUpdate'
+            example:
+              window_days: 14
+              enabled: true
+      responses:
+        "200":
+          description: Updated topic.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Topic'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    delete:
+      tags: [topics]
+      summary: Delete a topic
+      operationId: deleteTopic
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      responses:
+        "204":
+          description: Topic deleted.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /topics/{topicId}/scan:
+    parameters:
+      - $ref: '#/components/parameters/topicId'
+
+    post:
+      tags: [topics]
+      summary: Trigger a scan
+      description: >
+        Triggers Fargate worker tasks for all enabled sources attached to this
+        topic. Returns immediately with a scan_id and list of ECS task ARNs.
+      operationId: scanTopic
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      responses:
+        "202":
+          description: Scan triggered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /topics/{topicId}/synthesise:
+    parameters:
+      - $ref: '#/components/parameters/topicId'
+
+    post:
+      tags: [topics]
+      summary: Trigger synthesis
+      description: >
+        Starts a Step Functions execution to synthesise scored items into a
+        digest via Bedrock Claude. Returns immediately with an execution ARN.
+      operationId: synthesiseTopic
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                window_days:
+                  type: integer
+                  minimum: 1
+                  example: 7
+                min_score:
+                  type: integer
+                  minimum: 0
+                  maximum: 10
+                  default: 6
+                  example: 6
+            example:
+              window_days: 7
+              min_score: 6
+      responses:
+        "202":
+          description: Synthesis started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SynthesisResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Sources
+  # ---------------------------------------------------------------------------
+  /topics/{topicId}/sources:
+    parameters:
+      - $ref: '#/components/parameters/topicId'
+
+    get:
+      tags: [sources]
+      summary: List sources for a topic
+      operationId: listSources
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Array of sources.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Source'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [sources]
+      summary: Add a source to a topic
+      operationId: createSource
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceCreate'
+            examples:
+              rss_example:
+                summary: RSS source
+                value:
+                  name: O'Reilly Radar
+                  source_type: rss
+                  config:
+                    feed_url: https://feeds.feedburner.com/oreilly/radar
+                    lookback_days: 7
+                    max_items: 50
+              reddit_example:
+                summary: Reddit source
+                value:
+                  name: ML Subreddits
+                  source_type: reddit
+                  config:
+                    subreddits:
+                      - MachineLearning
+                      - LocalLLaMA
+                    post_limit: 25
+                    min_score: 10
+              youtube_example:
+                summary: YouTube source
+                value:
+                  name: AI YouTube channels
+                  source_type: youtube
+                  config:
+                    channel_ids:
+                      - UCbmNph6atAoGfqLoCL_duAg
+                    max_results: 20
+                    lookback_days: 7
+      responses:
+        "201":
+          description: Source created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Source'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /topics/{topicId}/sources/{sourceId}:
+    parameters:
+      - $ref: '#/components/parameters/topicId'
+      - $ref: '#/components/parameters/sourceId'
+
+    get:
+      tags: [sources]
+      summary: Get a source
+      operationId: getSource
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Source object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Source'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [sources]
+      summary: Update a source
+      operationId: updateSource
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceUpdate'
+            example:
+              enabled: false
+      responses:
+        "200":
+          description: Updated source.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Source'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    delete:
+      tags: [sources]
+      summary: Delete a source
+      operationId: deleteSource
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      responses:
+        "204":
+          description: Source deleted.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Items
+  # ---------------------------------------------------------------------------
+  /topics/{topicId}/items:
+    parameters:
+      - $ref: '#/components/parameters/topicId'
+
+    get:
+      tags: [items]
+      summary: List items for a topic
+      description: >
+        Returns a paginated list of ingested items. Use cursor from a previous
+        response to fetch the next page.
+      operationId: listItems
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ItemStatus'
+          description: Filter by item status.
+          example: SCORED
+        - name: min_score
+          in: query
+          required: false
+          schema:
+            type: number
+            minimum: 0
+            maximum: 10
+          description: Return only items with score >= min_score.
+          example: 6
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of items to return.
+          example: 20
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Pagination cursor from the previous response.
+          example: 01HV3K7QZR4E5J8P6N2X9MWBCG
+      responses:
+        "200":
+          description: Paginated items.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedItems'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Digests
+  # ---------------------------------------------------------------------------
+  /topics/{topicId}/digests:
+    parameters:
+      - $ref: '#/components/parameters/topicId'
+
+    get:
+      tags: [digests]
+      summary: List digests for a topic
+      operationId: listDigests
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Maximum number of digests to return.
+          example: 10
+      responses:
+        "200":
+          description: Array of digest summaries, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DigestSummary'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /topics/{topicId}/digests/{digestId}:
+    parameters:
+      - $ref: '#/components/parameters/topicId'
+      - $ref: '#/components/parameters/digestId'
+
+    get:
+      tags: [digests]
+      summary: Get a full digest
+      operationId: getDigest
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Full digest including synthesis.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Digest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Manual Ingestion
+  # ---------------------------------------------------------------------------
+  /topics/{topicId}/ingest:
+    parameters:
+      - $ref: '#/components/parameters/topicId'
+
+    post:
+      tags: [ingest]
+      summary: Manually ingest a piece of content
+      description: >
+        Creates a RAW item directly. At least one of text or url must be
+        provided alongside the required title.
+      operationId: manualIngest
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManualIngestRequest'
+            examples:
+              with_url:
+                summary: Ingest by URL
+                value:
+                  title: Interesting article on transformers
+                  url: https://example.com/article
+              with_text:
+                summary: Ingest raw text
+                value:
+                  title: Pasted notes from conference
+                  text: "Key takeaway: mixture-of-experts is winning..."
+              with_both:
+                summary: Ingest URL and text
+                value:
+                  title: Annotated article
+                  url: https://example.com/article
+                  text: "My notes: pay attention to section 3."
+      responses:
+        "201":
+          description: Item created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualIngestResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ---------------------------------------------------------------------------
+  # Settings
+  # ---------------------------------------------------------------------------
+  /settings:
+    get:
+      tags: [settings]
+      summary: Get application settings
+      operationId: getSettings
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Current settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      tags: [settings]
+      summary: Update application settings
+      operationId: updateSettings
+      security:
+        - ApiKeyAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsUpdate'
+            example:
+              ses_from_email: intel@example.com
+              ses_to_email: user@example.com
+              default_window_days: 14
+      responses:
+        "200":
+          description: Updated settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'

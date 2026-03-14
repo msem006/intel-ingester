@@ -4,9 +4,9 @@ import { StorageStack } from '../lib/stacks/storage-stack';
 import { SsmAuthStack } from '../lib/stacks/ssm-auth-stack';
 import { SecretsStack } from '../lib/stacks/secrets-stack';
 import { IngestionStack } from '../lib/stacks/ingestion-stack';
+import { EmailStack } from '../lib/stacks/email-stack';
 import { SynthesisStack } from '../lib/stacks/synthesis-stack';
 import { ApiStack } from '../lib/stacks/api-stack';
-import { EmailStack } from '../lib/stacks/email-stack';
 import { FrontendStack } from '../lib/stacks/frontend-stack';
 
 const app = new cdk.App();
@@ -16,11 +16,49 @@ const env = {
   region: process.env.CDK_DEFAULT_REGION,
 };
 
-new StorageStack(app, 'StorageStack', { env });
-new SsmAuthStack(app, 'SsmAuthStack', { env });
-new SecretsStack(app, 'SecretsStack', { env });
-new IngestionStack(app, 'IngestionStack', { env });
-new SynthesisStack(app, 'SynthesisStack', { env });
-new ApiStack(app, 'ApiStack', { env });
-new EmailStack(app, 'EmailStack', { env });
+// Dependency order:
+//   StorageStack (no deps)
+//   SsmAuthStack (no deps)
+//   SecretsStack → StorageStack
+//   IngestionStack → StorageStack, SecretsStack
+//   EmailStack → StorageStack
+//   SynthesisStack → StorageStack, IngestionStack, EmailStack
+//   ApiStack → StorageStack, IngestionStack, SsmAuthStack, SynthesisStack
+//   FrontendStack (no deps)
+
+const storageStack = new StorageStack(app, 'StorageStack', { env });
+
+const ssmAuthStack = new SsmAuthStack(app, 'SsmAuthStack', { env });
+
+const secretsStack = new SecretsStack(app, 'SecretsStack', {
+  env,
+  storageStack,
+});
+
+const ingestionStack = new IngestionStack(app, 'IngestionStack', {
+  env,
+  storageStack,
+  secretsStack,
+});
+
+const emailStack = new EmailStack(app, 'EmailStack', {
+  env,
+  storageStack,
+});
+
+const synthesisStack = new SynthesisStack(app, 'SynthesisStack', {
+  env,
+  storageStack,
+  ingestionStack,
+  emailStack,
+});
+
+new ApiStack(app, 'ApiStack', {
+  env,
+  storageStack,
+  ingestionStack,
+  ssmAuthStack,
+  synthesisStack,
+});
+
 new FrontendStack(app, 'FrontendStack', { env });

@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as ses from 'aws-cdk-lib/aws-ses';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambda_event_sources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -33,6 +34,19 @@ export class EmailStack extends cdk.Stack {
     // Note: SES sending identity (email address or domain) must be verified manually
     // post-deploy via the SES console. SES starts in sandbox mode — submit production
     // access request to send to unverified addresses.
+
+    // SES email addresses — update post-deploy via AWS Console or CLI
+    new ssm.StringParameter(this, 'SesFromEmailParam', {
+      parameterName: '/intel-ingester/prod/config/ses-from-email',
+      stringValue: 'noreply@example.com',
+      description: 'SES sending address (verify this address in SES before use)',
+    });
+
+    new ssm.StringParameter(this, 'SesToEmailParam', {
+      parameterName: '/intel-ingester/prod/config/ses-to-email',
+      stringValue: 'user@example.com',
+      description: 'Digest recipient email address',
+    });
 
     // IAM — emailer Lambda role
     const emailerRole = new iam.Role(this, 'EmailerRole', {

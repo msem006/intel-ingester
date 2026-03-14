@@ -1,0 +1,4 @@
+boto3>=1.34
+intel-shared @ file:///var/task/shared
+tiktoken>=0.6
+aws-lambda-powertools>=2.30

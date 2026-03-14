@@ -16,6 +16,8 @@ export class IngestionStack extends cdk.Stack {
   public readonly cluster: ecs.Cluster;
   public readonly toProcessQueue: sqs.Queue;
   public readonly toScoreQueue: sqs.Queue;
+  public readonly toProcessDlq: sqs.Queue;
+  public readonly toScoreDlq: sqs.Queue;
   public readonly workerTaskRole: iam.Role;
   public readonly rssTaskDef: ecs.FargateTaskDefinition;
   public readonly redditTaskDef: ecs.FargateTaskDefinition;
@@ -28,7 +30,7 @@ export class IngestionStack extends cdk.Stack {
     super(scope, id, props);
 
     // SQS — to-process queue (worker → processor Lambda)
-    const toProcessDlq = new sqs.Queue(this, 'ToProcessDlq', {
+    this.toProcessDlq = new sqs.Queue(this, 'ToProcessDlq', {
       queueName: 'intel-ingester-to-process-dlq',
       retentionPeriod: cdk.Duration.days(14),
       encryption: sqs.QueueEncryption.SQS_MANAGED,
@@ -39,11 +41,11 @@ export class IngestionStack extends cdk.Stack {
       visibilityTimeout: cdk.Duration.seconds(300),
       retentionPeriod: cdk.Duration.days(7),
       encryption: sqs.QueueEncryption.SQS_MANAGED,
-      deadLetterQueue: { queue: toProcessDlq, maxReceiveCount: 3 },
+      deadLetterQueue: { queue: this.toProcessDlq, maxReceiveCount: 3 },
     });
 
     // SQS — to-score queue (processor Lambda → scorer Lambda)
-    const toScoreDlq = new sqs.Queue(this, 'ToScoreDlq', {
+    this.toScoreDlq = new sqs.Queue(this, 'ToScoreDlq', {
       queueName: 'intel-ingester-to-score-dlq',
       retentionPeriod: cdk.Duration.days(14),
       encryption: sqs.QueueEncryption.SQS_MANAGED,
@@ -54,7 +56,7 @@ export class IngestionStack extends cdk.Stack {
       visibilityTimeout: cdk.Duration.seconds(300),
       retentionPeriod: cdk.Duration.days(7),
       encryption: sqs.QueueEncryption.SQS_MANAGED,
-      deadLetterQueue: { queue: toScoreDlq, maxReceiveCount: 3 },
+      deadLetterQueue: { queue: this.toScoreDlq, maxReceiveCount: 3 },
     });
 
     // SSM — queue URLs consumed by workers and Lambdas at runtime

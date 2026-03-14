@@ -8,6 +8,7 @@ import { EmailStack } from '../lib/stacks/email-stack';
 import { SynthesisStack } from '../lib/stacks/synthesis-stack';
 import { ApiStack } from '../lib/stacks/api-stack';
 import { FrontendStack } from '../lib/stacks/frontend-stack';
+import { ObservabilityStack } from '../lib/stacks/observability-stack';
 
 const app = new cdk.App();
 
@@ -25,6 +26,7 @@ const env = {
 //   SynthesisStack → StorageStack, IngestionStack, EmailStack
 //   ApiStack → StorageStack, IngestionStack, SsmAuthStack, SynthesisStack
 //   FrontendStack (no deps)
+//   ObservabilityStack → IngestionStack, SynthesisStack
 
 const storageStack = new StorageStack(app, 'StorageStack', { env });
 
@@ -62,3 +64,9 @@ new ApiStack(app, 'ApiStack', {
 });
 
 new FrontendStack(app, 'FrontendStack', { env });
+
+new ObservabilityStack(app, 'ObservabilityStack', {
+  env,
+  ingestionStack,
+  synthesisStack,
+});

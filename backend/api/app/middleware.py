@@ -1,8 +1,9 @@
 import os
 import logging
 from functools import lru_cache
-from fastapi import Request, HTTPException
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 from intel_shared.clients.secrets import get_ssm_parameter
 
@@ -24,5 +25,5 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         api_key = request.headers.get('X-API-Key')
         if not api_key or api_key != _get_api_key():
-            raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key")
+            return JSONResponse(status_code=401, content={"detail": "Invalid or missing X-API-Key"})
         return await call_next(request)

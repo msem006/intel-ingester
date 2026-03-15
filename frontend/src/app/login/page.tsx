@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Zap, Eye, EyeOff } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, setLoggedIn, isLoggedIn } from '@/lib/api';
 import { Spinner } from '@/components/Spinner';
 
 export default function LoginPage() {
@@ -12,6 +12,10 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isLoggedIn()) router.replace('/dashboard');
+  }, [router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -22,6 +26,7 @@ export default function LoginPage() {
         method: 'POST',
         body: JSON.stringify({ password }),
       });
+      setLoggedIn(true);
       router.push('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid credentials');

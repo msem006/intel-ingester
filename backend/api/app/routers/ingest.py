@@ -16,7 +16,7 @@ from intel_shared.models.dynamo import (
     gsi1_pk, gsi1_sk, gsi3_pk, gsi3_sk,
     to_dynamo_item, new_ulid,
 )
-from ..auth import verify_session
+from ..auth import api_key_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix='/topics', tags=['ingest'])
@@ -50,7 +50,7 @@ class ManualIngestRequest(BaseModel):
 def manual_ingest(
     topic_id: str,
     body: ManualIngestRequest,
-    user_id: str = Depends(verify_session),
+    user_id: str = Depends(api_key_user),
 ):
     # Verify topic exists
     topic = get_item(topic_pk(USER_ID), topic_sk(topic_id))

@@ -5,9 +5,11 @@ import { Save, Key, Mail, CalendarDays, CheckCircle } from 'lucide-react';
 import { Nav } from '@/components/Nav';
 import { Spinner } from '@/components/Spinner';
 import { useSettings, useUpdateSettings } from '@/lib/hooks';
+import { useRequireAuth } from '@/lib/api';
 import type { SettingsUpdate } from '@/lib/types';
 
 export default function SettingsPage() {
+  useRequireAuth();
   const { data: settings, isLoading, error } = useSettings();
   const updateSettings = useUpdateSettings();
 
@@ -58,31 +60,13 @@ export default function SettingsPage() {
     }
   }
 
-  if (isLoading)
-    return (
-      <div className="min-h-screen bg-zinc-950">
-        <Nav />
-        <div className="flex justify-center py-20">
-          <Spinner size={24} />
-        </div>
-      </div>
-    );
-
-  if (error)
-    return (
-      <div className="min-h-screen bg-zinc-950">
-        <Nav />
-        <div className="max-w-2xl mx-auto px-4 py-8 text-red-400 text-sm">{error.message}</div>
-      </div>
-    );
-
   return (
     <div className="min-h-screen bg-zinc-950">
       <Nav />
       <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
         <h1 className="text-xl font-bold text-zinc-100 mb-6">Settings</h1>
 
-        {/* API key section (local only) */}
+        {/* API key section — always visible, localStorage only, no API call needed */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 mb-6">
           <div className="flex items-center gap-2 mb-1">
             <Key size={14} className="text-zinc-400" />
@@ -118,10 +102,12 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* App settings form */}
+        {/* App settings form — requires valid API key */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
           <h2 className="text-zinc-200 font-semibold text-sm mb-4">Application Settings</h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {isLoading && <div className="flex justify-center py-6"><Spinner size={20} /></div>}
+          {error && <div className="text-red-400 text-sm py-2">{error.message}</div>}
+          {!isLoading && !error && <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="flex items-center gap-1.5 text-xs text-zinc-500 mb-1.5 uppercase tracking-wide">
                 <Mail size={11} />
@@ -186,7 +172,7 @@ export default function SettingsPage() {
                 {saved ? 'Saved!' : 'Save Settings'}
               </button>
             </div>
-          </form>
+          </form>}
         </div>
       </main>
     </div>

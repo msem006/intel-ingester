@@ -14,7 +14,7 @@ from intel_shared.models.dynamo import (
     topic_pk, topic_sk, source_pk, source_sk,
     to_dynamo_item, from_dynamo_item, new_ulid,
 )
-from ..auth import verify_session
+from ..auth import api_key_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix='/topics', tags=['topics'])
@@ -47,13 +47,13 @@ class SynthesiseRequest(BaseModel):
 
 
 @router.get('')
-def list_topics(user_id: str = Depends(verify_session)):
+def list_topics(user_id: str = Depends(api_key_user)):
     items = query_pk('USER#main', sk_prefix='TOPIC#')
     return [_dynamo_to_topic(i) for i in items]
 
 
 @router.post('', status_code=201)
-def create_topic(body: TopicCreate, user_id: str = Depends(verify_session)):
+def create_topic(body: TopicCreate, user_id: str = Depends(api_key_user)):
     topic_id = new_ulid()
     now = datetime.now(timezone.utc)
     topic = Topic(
@@ -68,7 +68,7 @@ def create_topic(body: TopicCreate, user_id: str = Depends(verify_session)):
 
 
 @router.get('/{topic_id}')
-def get_topic(topic_id: str, user_id: str = Depends(verify_session)):
+def get_topic(topic_id: str, user_id: str = Depends(api_key_user)):
     item = get_item(topic_pk(USER_ID), topic_sk(topic_id))
     if not item:
         raise HTTPException(404, 'Topic not found')
@@ -76,7 +76,7 @@ def get_topic(topic_id: str, user_id: str = Depends(verify_session)):
 
 
 @router.put('/{topic_id}')
-def update_topic(topic_id: str, body: TopicUpdate, user_id: str = Depends(verify_session)):
+def update_topic(topic_id: str, body: TopicUpdate, user_id: str = Depends(api_key_user)):
     existing = get_item(topic_pk(USER_ID), topic_sk(topic_id))
     if not existing:
         raise HTTPException(404, 'Topic not found')
@@ -87,7 +87,7 @@ def update_topic(topic_id: str, body: TopicUpdate, user_id: str = Depends(verify
 
 
 @router.delete('/{topic_id}', status_code=204)
-def delete_topic(topic_id: str, user_id: str = Depends(verify_session)):
+def delete_topic(topic_id: str, user_id: str = Depends(api_key_user)):
     existing = get_item(topic_pk(USER_ID), topic_sk(topic_id))
     if not existing:
         raise HTTPException(404, 'Topic not found')
@@ -95,7 +95,7 @@ def delete_topic(topic_id: str, user_id: str = Depends(verify_session)):
 
 
 @router.post('/{topic_id}/scan', status_code=202)
-def trigger_scan(topic_id: str, user_id: str = Depends(verify_session)):
+def trigger_scan(topic_id: str, user_id: str = Depends(api_key_user)):
     # Get all enabled sources for this topic
     sources = query_pk(source_pk(topic_id), sk_prefix='SOURCE#')
     enabled = [s for s in sources if s.get('enabled', True)]
@@ -162,7 +162,7 @@ def trigger_scan(topic_id: str, user_id: str = Depends(verify_session)):
 
 
 @router.post('/{topic_id}/synthesise', status_code=202)
-def trigger_synthesis(topic_id: str, body: SynthesiseRequest, user_id: str = Depends(verify_session)):
+def trigger_synthesis(topic_id: str, body: SynthesiseRequest, user_id: str = Depends(api_key_user)):
     topic = get_item(topic_pk(USER_ID), topic_sk(topic_id))
     if not topic:
         raise HTTPException(404, 'Topic not found')

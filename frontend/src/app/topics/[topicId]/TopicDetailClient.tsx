@@ -25,6 +25,7 @@ import {
   useTriggerSynthesis,
 } from '@/lib/hooks';
 import type { SourceCreate, SourceType, DigestSummary } from '@/lib/types';
+import { useRequireAuth } from '@/lib/api';
 
 type Tab = 'digest' | 'sources' | 'history';
 
@@ -390,6 +391,7 @@ export default function TopicDetailPage({
 }: {
   params: Promise<{ topicId: string }>;
 }) {
+  useRequireAuth();
   const { topicId } = use(params);
   const { data: topic, isLoading: topicLoading, error: topicError } = useTopic(topicId);
   const { data: digests } = useDigests(topicId);

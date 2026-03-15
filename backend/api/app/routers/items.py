@@ -10,7 +10,7 @@ from intel_shared.models.dynamo import (
     topic_pk, topic_sk,
     gsi1_pk, gsi2_pk,
 )
-from ..auth import verify_session
+from ..auth import api_key_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix='/topics', tags=['items'])
@@ -24,7 +24,7 @@ def list_items(
     min_score: Optional[float] = Query(default=None, ge=0, le=10),
     limit: int = Query(default=20, ge=1, le=100),
     cursor: Optional[str] = Query(default=None),
-    user_id: str = Depends(verify_session),
+    user_id: str = Depends(api_key_user),
 ):
     from intel_shared.clients.dynamo import get_item
     topic = get_item(topic_pk(USER_ID), topic_sk(topic_id))

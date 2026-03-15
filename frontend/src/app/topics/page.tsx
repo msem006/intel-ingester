@@ -7,6 +7,7 @@ import { Nav } from '@/components/Nav';
 import { Spinner } from '@/components/Spinner';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useTopics, useCreateTopic, useDeleteTopic } from '@/lib/hooks';
+import { useRequireAuth } from '@/lib/api';
 import type { TopicCreate } from '@/lib/types';
 
 function NewTopicForm({ onClose }: { onClose: () => void }) {
@@ -90,6 +91,7 @@ function NewTopicForm({ onClose }: { onClose: () => void }) {
 }
 
 export default function TopicsPage() {
+  useRequireAuth();
   const { data: topics, isLoading, error } = useTopics();
   const deleteTopic = useDeleteTopic();
   const [showForm, setShowForm] = useState(false);

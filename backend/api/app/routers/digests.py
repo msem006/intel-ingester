@@ -8,7 +8,7 @@ from intel_shared.clients.dynamo import get_item, query_pk
 from intel_shared.models.dynamo import (
     topic_pk, topic_sk, digest_pk, digest_sk,
 )
-from ..auth import verify_session
+from ..auth import api_key_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix='/topics', tags=['digests'])
@@ -19,7 +19,7 @@ USER_ID = 'main'
 def list_digests(
     topic_id: str,
     limit: int = Query(default=10, ge=1, le=100),
-    user_id: str = Depends(verify_session),
+    user_id: str = Depends(api_key_user),
 ):
     topic = get_item(topic_pk(USER_ID), topic_sk(topic_id))
     if not topic:
@@ -34,7 +34,7 @@ def list_digests(
 def get_digest(
     topic_id: str,
     digest_id: str,
-    user_id: str = Depends(verify_session),
+    user_id: str = Depends(api_key_user),
 ):
     item = get_item(digest_pk(topic_id), digest_sk(digest_id))
     if not item:

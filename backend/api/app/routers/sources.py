@@ -11,7 +11,7 @@ from intel_shared.models.dynamo import (
     source_pk, source_sk, topic_pk, topic_sk,
     to_dynamo_item, new_ulid,
 )
-from ..auth import verify_session
+from ..auth import api_key_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix='/topics', tags=['sources'])
@@ -31,7 +31,7 @@ class SourceUpdate(BaseModel):
 
 
 @router.get('/{topic_id}/sources')
-def list_sources(topic_id: str, user_id: str = Depends(verify_session)):
+def list_sources(topic_id: str, user_id: str = Depends(api_key_user)):
     # Verify topic exists
     topic = get_item(topic_pk(USER_ID), topic_sk(topic_id))
     if not topic:
@@ -41,7 +41,7 @@ def list_sources(topic_id: str, user_id: str = Depends(verify_session)):
 
 
 @router.post('/{topic_id}/sources', status_code=201)
-def create_source(topic_id: str, body: SourceCreate, user_id: str = Depends(verify_session)):
+def create_source(topic_id: str, body: SourceCreate, user_id: str = Depends(api_key_user)):
     # Verify topic exists
     topic = get_item(topic_pk(USER_ID), topic_sk(topic_id))
     if not topic:
@@ -64,7 +64,7 @@ def create_source(topic_id: str, body: SourceCreate, user_id: str = Depends(veri
 
 
 @router.get('/{topic_id}/sources/{source_id}')
-def get_source(topic_id: str, source_id: str, user_id: str = Depends(verify_session)):
+def get_source(topic_id: str, source_id: str, user_id: str = Depends(api_key_user)):
     item = get_item(source_pk(topic_id), source_sk(source_id))
     if not item:
         raise HTTPException(404, 'Source not found')
@@ -72,7 +72,7 @@ def get_source(topic_id: str, source_id: str, user_id: str = Depends(verify_sess
 
 
 @router.put('/{topic_id}/sources/{source_id}')
-def update_source(topic_id: str, source_id: str, body: SourceUpdate, user_id: str = Depends(verify_session)):
+def update_source(topic_id: str, source_id: str, body: SourceUpdate, user_id: str = Depends(api_key_user)):
     existing = get_item(source_pk(topic_id), source_sk(source_id))
     if not existing:
         raise HTTPException(404, 'Source not found')
@@ -83,7 +83,7 @@ def update_source(topic_id: str, source_id: str, body: SourceUpdate, user_id: st
 
 
 @router.delete('/{topic_id}/sources/{source_id}', status_code=204)
-def delete_source(topic_id: str, source_id: str, user_id: str = Depends(verify_session)):
+def delete_source(topic_id: str, source_id: str, user_id: str = Depends(api_key_user)):
     existing = get_item(source_pk(topic_id), source_sk(source_id))
     if not existing:
         raise HTTPException(404, 'Source not found')

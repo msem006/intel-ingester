@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from intel_shared.clients.secrets import get_ssm_parameter
-from ..auth import verify_session
+from ..auth import api_key_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix='/settings', tags=['settings'])
@@ -29,7 +29,7 @@ class SettingsUpdate(BaseModel):
 
 
 @router.get('')
-def get_settings(user_id: str = Depends(verify_session)):
+def get_settings(user_id: str = Depends(api_key_user)):
     settings = {}
     for field, param_name in _SSM_KEYS.items():
         try:
@@ -45,7 +45,7 @@ def get_settings(user_id: str = Depends(verify_session)):
 
 
 @router.put('')
-def update_settings(body: SettingsUpdate, user_id: str = Depends(verify_session)):
+def update_settings(body: SettingsUpdate, user_id: str = Depends(api_key_user)):
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(422, 'No settings provided to update')

@@ -8,6 +8,7 @@ import { Nav } from '@/components/Nav';
 import { Spinner } from '@/components/Spinner';
 import { useDigest } from '@/lib/hooks';
 import type { SignalConfidence } from '@/lib/types';
+import { useRequireAuth } from '@/lib/api';
 
 const confidenceClasses: Record<SignalConfidence, string> = {
   high: 'bg-emerald-900/40 text-emerald-400 border-emerald-800/50',
@@ -20,6 +21,7 @@ export default function DigestDetailPage({
 }: {
   params: Promise<{ digestId: string }>;
 }) {
+  useRequireAuth();
   const { digestId } = use(params);
   const searchParams = useSearchParams();
   const topicId = searchParams.get('topicId') ?? '';

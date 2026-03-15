@@ -47,6 +47,11 @@ def verify_session(intel_session: Optional[str] = Cookie(default=None)) -> str:
         raise HTTPException(status_code=401, detail="Session expired or invalid")
 
 
+def api_key_user() -> str:
+    """Single-user dependency; auth is already enforced by ApiKeyMiddleware."""
+    return 'main'
+
+
 def check_password(plain: str) -> bool:
     stored_hash = get_ssm_parameter(f'/intel-ingester/{ENV}/auth/password')
     try:

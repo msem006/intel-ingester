@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { Zap, LogOut } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, setLoggedIn } from '@/lib/api';
 
 const navLinks = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -13,7 +13,6 @@ const navLinks = [
 
 export function Nav() {
   const pathname = usePathname();
-  const router = useRouter();
 
   async function handleLogout() {
     try {
@@ -21,7 +20,8 @@ export function Nav() {
     } catch {
       // ignore
     }
-    router.push('/login');
+    setLoggedIn(false);
+    window.location.href = '/';
   }
 
   return (

@@ -1,3 +1,5 @@
+import * as path from 'path';
+import { execSync } from 'child_process';
 import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
@@ -62,11 +64,11 @@ export class ApiStack extends cdk.Stack {
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/intel-ingester/*`],
     }));
 
-    // API Lambda — FastAPI + Mangum adapter (placeholder; real code in Phase 3)
+    // API Lambda — FastAPI + Mangum adapter
     const apiLambda = new lambda.Function(this, 'ApiLambda', {
       functionName: 'intel-ingester-api',
       runtime: lambda.Runtime.PYTHON_3_12,
-      handler: 'index.handler',
+      handler: 'app.main.handler',
       role: apiLambdaRole,
       timeout: cdk.Duration.seconds(30),
       memorySize: 512,
@@ -76,16 +78,41 @@ export class ApiStack extends cdk.Stack {
         STATE_MACHINE_ARN: props.synthesisStack.stateMachine.stateMachineArn,
         ECS_CLUSTER: props.ingestionStack.cluster.clusterName,
       },
-      code: lambda.Code.fromInline(`
-import json
-
-def handler(event, context):
-    return {
-        'statusCode': 200,
-        'headers': {'Content-Type': 'application/json'},
-        'body': json.dumps({'status': 'ok', 'message': 'Intel Ingester API placeholder — Phase 3'})
-    }
-`),
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend'), {
+        bundling: {
+          local: {
+            tryBundle(outputDir: string): boolean {
+              try {
+                const backendDir = path.join(__dirname, '../../../backend');
+                // Install Linux x86_64 wheels so the package runs on Lambda (not macOS wheels)
+                execSync(
+                  `pip3 install fastapi mangum boto3 pydantic python-ulid itsdangerous bcrypt`
+                  + ` tiktoken trafilatura beautifulsoup4`
+                  + ` --platform manylinux2014_x86_64`
+                  + ` --implementation cp --python-version 312`
+                  + ` --only-binary=:all:`
+                  + ` -t "${outputDir}" --quiet`,
+                  { stdio: ['ignore', 'pipe', 'pipe'] },
+                );
+                execSync(`cp -r "${backendDir}/api/app" "${outputDir}/app"`);
+                execSync(`cp -r "${backendDir}/shared/intel_shared" "${outputDir}/intel_shared"`);
+                return true;
+              } catch {
+                return false;
+              }
+            },
+          },
+          image: lambda.Runtime.PYTHON_3_12.bundlingImage,
+          command: [
+            'bash', '-c', [
+              'pip install fastapi mangum boto3 pydantic python-ulid itsdangerous bcrypt'
+                + ' tiktoken trafilatura beautifulsoup4 -t /asset-output --quiet',
+              'cp -r api/app /asset-output/app',
+              'cp -r shared/intel_shared /asset-output/intel_shared',
+            ].join(' && '),
+          ],
+        },
+      }),
     });
 
     // API Gateway HTTP API — no Cognito authoriser; auth via X-API-Key header in FastAPI

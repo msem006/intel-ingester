@@ -7,24 +7,89 @@ import { Plus, RefreshCw, Sparkles, BookOpen, CalendarDays, Layers } from 'lucid
 import { Nav } from '@/components/Nav';
 import { Spinner } from '@/components/Spinner';
 import { useTopics, useCreateTopic, useTriggerScan, useTriggerSynthesis } from '@/lib/hooks';
+import { useRequireAuth } from '@/lib/api';
 import type { Topic, TopicCreate } from '@/lib/types';
+
+type OpState =
+  | { kind: 'idle' }
+  | { kind: 'running'; label: string; hint: string; color: 'amber' | 'indigo' }
+  | { kind: 'error'; message: string };
+
+function StatusPill({ state }: { state: OpState }) {
+  if (state.kind === 'idle') return null;
+  if (state.kind === 'error') {
+    return (
+      <div className="mt-3 flex items-center gap-1.5 text-xs text-red-400">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+        {state.message}
+      </div>
+    );
+  }
+  const dot = state.color === 'amber' ? 'bg-amber-400 animate-pulse' : 'bg-indigo-400 animate-pulse';
+  const text = state.color === 'amber' ? 'text-amber-300' : 'text-indigo-300';
+  return (
+    <div className="mt-3 flex flex-col gap-0.5">
+      <div className={`flex items-center gap-1.5 text-xs font-medium ${text}`}>
+        <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
+        {state.label}
+      </div>
+      <p className="text-xs text-zinc-500 pl-3">{state.hint}</p>
+    </div>
+  );
+}
 
 function TopicCard({ topic }: { topic: Topic }) {
   const router = useRouter();
   const triggerScan = useTriggerScan();
   const triggerSynthesis = useTriggerSynthesis();
+  const [scanState, setScanState] = useState<OpState>({ kind: 'idle' });
+  const [synthState, setSynthState] = useState<OpState>({ kind: 'idle' });
 
   function handleScan(e: React.MouseEvent) {
     e.stopPropagation();
     e.preventDefault();
-    triggerScan.mutate(topic.topic_id);
+    setScanState({ kind: 'idle' });
+    setSynthState({ kind: 'idle' });
+    triggerScan.mutate(topic.topic_id, {
+      onSuccess: (res) => {
+        if (res.status === 'no_sources') {
+          setScanState({ kind: 'error', message: 'No sources configured — add a source first.' });
+        } else {
+          const n = res.sources_triggered;
+          setScanState({
+            kind: 'running',
+            label: `Scanning ${n} source${n !== 1 ? 's' : ''}…`,
+            hint: `Workers run for ~2–5 min. Run Synthesise once complete.`,
+            color: 'amber',
+          });
+        }
+      },
+      onError: (err) => setScanState({ kind: 'error', message: err.message }),
+    });
   }
 
   function handleSynthesis(e: React.MouseEvent) {
     e.stopPropagation();
     e.preventDefault();
-    triggerSynthesis.mutate({ topicId: topic.topic_id });
+    setScanState({ kind: 'idle' });
+    setSynthState({ kind: 'idle' });
+    triggerSynthesis.mutate({ topicId: topic.topic_id }, {
+      onSuccess: () => {
+        setSynthState({
+          kind: 'running',
+          label: 'Synthesising…',
+          hint: 'AI digest generates in ~5–10 min and will be emailed to you.',
+          color: 'indigo',
+        });
+      },
+      onError: (err) => setSynthState({ kind: 'error', message: err.message }),
+    });
   }
+
+  const activeState: OpState =
+    synthState.kind !== 'idle' ? synthState :
+    scanState.kind !== 'idle' ? scanState :
+    { kind: 'idle' };
 
   return (
     <div
@@ -59,7 +124,7 @@ function TopicCard({ topic }: { topic: Topic }) {
       <div className="flex items-center gap-2">
         <button
           onClick={handleScan}
-          disabled={triggerScan.isPending}
+          disabled={triggerScan.isPending || triggerSynthesis.isPending}
           className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 disabled:opacity-50 text-xs font-medium transition-colors"
         >
           {triggerScan.isPending ? <Spinner size={11} /> : <RefreshCw size={11} />}
@@ -67,13 +132,15 @@ function TopicCard({ topic }: { topic: Topic }) {
         </button>
         <button
           onClick={handleSynthesis}
-          disabled={triggerSynthesis.isPending}
+          disabled={triggerSynthesis.isPending || triggerScan.isPending}
           className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-medium transition-colors"
         >
           {triggerSynthesis.isPending ? <Spinner size={11} /> : <Sparkles size={11} />}
           Synthesise
         </button>
       </div>
+
+      <StatusPill state={activeState} />
     </div>
   );
 }
@@ -147,6 +214,7 @@ function AddTopicInlineForm({ onClose }: { onClose: () => void }) {
 }
 
 export default function DashboardPage() {
+  useRequireAuth();
   const { data: topics, isLoading, error } = useTopics();
   const [showForm, setShowForm] = useState(false);
 

@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
@@ -134,9 +135,11 @@ export class IngestionStack extends cdk.Stack {
         taskRole: this.workerTaskRole,
         executionRole,
       });
+      const repo = ecr.Repository.fromRepositoryName(
+        this, `${id}Repo`, `intel-ingester-${workerType}-worker`,
+      );
       taskDef.addContainer(`${workerType}Container`, {
-        image: ecs.ContainerImage.fromRegistry('public.ecr.aws/amazonlinux/amazonlinux:2023'),
-        command: ['echo', `intel-ingester ${workerType} worker — placeholder`],
+        image: ecs.ContainerImage.fromEcrRepository(repo, 'latest'),
         logging: ecs.LogDrivers.awsLogs({ streamPrefix: `intel-ingester-${workerType}` }),
         environment: { WORKER_TYPE: workerType, ENV: 'prod' },
       });

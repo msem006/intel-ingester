@@ -65,9 +65,9 @@ aws ssm put-parameter \
   --type String --overwrite
 ```
 
-- [ ] auth/password set
-- [ ] auth/api-key set
-- [ ] auth/session-secret set
+- [x] auth/password set
+- [x] auth/api-key set
+- [x] auth/session-secret set
 
 ---
 
@@ -90,10 +90,10 @@ aws ssm put-parameter \
   --type String --overwrite
 ```
 
-- [ ] Sending email address verified in SES
+- [x] Sending email address verified in SES
 - [ ] SES sandbox exit requested (or sending only to verified addresses)
-- [ ] ses-from-email SSM param updated
-- [ ] ses-to-email SSM param updated
+- [x] ses-from-email SSM param updated
+- [x] ses-to-email SSM param updated
 
 ---
 
@@ -139,8 +139,8 @@ aws ssm put-parameter \
   --type String --overwrite
 ```
 
-- [ ] SNS subscription confirmed
-- [ ] alert-email SSM param updated
+- [ ] SNS subscription confirmed (confirmation email sent — click link in inbox)
+- [x] alert-email SSM param updated
 
 ---
 
@@ -181,10 +181,10 @@ image: ecs.ContainerImage.fromEcrRepository(
 ```
 Then redeploy: `npx cdk deploy IngestionStack`
 
-- [ ] ECR repos created (6 repos)
-- [ ] All 6 worker images built and pushed
-- [ ] IngestionStack task definitions updated to use ECR images
-- [ ] IngestionStack redeployed
+- [x] ECR repos created (6 repos)
+- [x] All 6 worker images built and pushed (via AWS CodeBuild)
+- [x] ECS task definition families registered with ECR images (via `aws ecs register-task-definition`)
+- [x] Task definitions active and ready
 
 ---
 
@@ -209,10 +209,10 @@ aws cloudfront create-invalidation \
   --paths "/*"
 ```
 
-- [ ] .env.local created with NEXT_PUBLIC_API_URL
-- [ ] `npm run build` succeeds
-- [ ] Frontend deployed to S3
-- [ ] CloudFront cache invalidated
+- [x] .env.local created with NEXT_PUBLIC_API_URL
+- [x] `npm run build` succeeds
+- [x] Frontend deployed to S3
+- [x] CloudFront cache invalidated
 
 ---
 

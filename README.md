@@ -139,9 +139,30 @@ Single-user tool. No Cognito.
 - **Password:** bcrypt hash stored in SSM `/intel-ingester/prod/auth/password`
 - All routes except `/auth/login`, `/auth/logout`, `/health` require both cookie + API key
 
+## Deployed instance
+
+| Resource | Value |
+|---|---|
+| Frontend | `https://d2ajsxi49l5yby.cloudfront.net` |
+| API | `https://kwndxo6eq9.execute-api.ap-southeast-2.amazonaws.com` |
+| AWS account | `immutable-customer-ops` (911167921899) |
+| Region | `ap-southeast-2` (Sydney) |
+| AWS profile | `imx-admin` |
+
 ## Setup
 
 See **[SETUP_TODO.md](SETUP_TODO.md)** for the full step-by-step checklist.
+
+### Completed setup (as of March 2026)
+
+- [x] CDK bootstrap + all 9 stacks deployed
+- [x] Auth SSM params configured (password, session secret, API key)
+- [x] SES sending email verified (`dhanish.semar@immutable.com`)
+- [x] All 6 Docker worker images built via CodeBuild and pushed to ECR
+- [x] ECS task definition families registered with real ECR images
+- [x] Frontend built and deployed to S3/CloudFront
+- [ ] Reddit API credentials (optional — add when needed)
+- [ ] YouTube API credentials (optional — add when needed)
 
 ## Cost
 
